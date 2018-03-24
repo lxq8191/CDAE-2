@@ -118,12 +118,14 @@ class AutoEncoder(object):
                 if self.with_weights:  # ===========================================
                     self.weights = tf.placeholder(tf.float32, shape=(1, self.item_num))
                     self.cost = tf.reduce_mean(
-                            -tf.reduce_sum(self.targets*tf.log(self.decode)*self.weights,
+                            -tf.reduce_sum((-self.targets*tf.log(self.decode) - \
+                                    (1-self.targets)*tf.log(1-self.decode))*self.weights,
                                            reduction_indices=1))
                 else:  # ===========================================================
                     self.cost = tf.reduce_mean(
-                            -tf.reduce_sum(self.targets*tf.log(self.decode),
-                                           reduction_indices=1))
+                            tf.reduce_sum(-self.targets*tf.log(self.decode) - \
+                                    (1-self.targets)*tf.log(1-self.decode),
+                                    reduction_indices=1))
 
             else:
                 raise NotImplementedError
@@ -190,34 +192,3 @@ class AutoEncoder(object):
                                 })
                     self.log['train_loss'].append(loss_/self.user_num)
 
-    def averagePrecision(self, rating):
-        '''
-        Calculate Average Precision
-        
-        -- Args --:
-            rating: rating matrix
-
-        -- Return --:
-            ap: list of average precision for each user
-        '''
- 
-        ap = []
-        for usr in range(rating.shape[0]):
-            recon = self.recon.eval(
-                    session=self.sess,
-                    feed_dict={
-                        self.inputs: [rating[usr]],
-                        self.user_id: usr
-                    })
-            top5 = recon[0].argsort()[-5:][::-1]
-            sum_p = 0.
-
-            for k in range(5):
-                count = 0
-                if rating[usr][top5[k]] == 1:
-                    for idx in range(k):
-                        count += 1 if rating[usr][top5[idx]] == 1 else 0
-                    sum_p += count / 5
-            ap.append(sum_p / 5)
-
-        return ap
