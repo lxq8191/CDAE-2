@@ -43,12 +43,28 @@ def avg_precision(topN, indices):
     '''
     N = len(topN)
     sum_p = 0.
+    hit_count = 0
 
     for i in range(N):
-        count = 0
         if topN[i] in indices:
-            for idx in range(i+1):
-                count += 1 if topN[idx] in indices else 0
-            sum_p += count / (i+1)
+            hit_count += 1
+            sum_p += hit_count / (i+1)
     
-    return sum_p / min(N, len(indices))
+    try:
+        return sum_p / min(N, len(indices))
+    except ZeroDivisionError:
+        return 100
+
+
+def get_topN(rec_matrix, train_index, N=5):
+    
+    topN = []
+    recon_rank = rec_matrix[0].argsort()[::-1]
+
+    for rank_idx in recon_rank:
+        if len(topN) == N:
+            break
+        if rank_idx not in train_index:
+            topN.append(rank_idx)
+
+    return topN
