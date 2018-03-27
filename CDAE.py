@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tqdm import trange
 import numpy as np
+from utils import get_topN
 
 
 class AutoEncoder(object):
@@ -56,7 +57,7 @@ class AutoEncoder(object):
         user_num = self.user_num
         item_num = self.item_num
 
-        with tf.variable_scope(self.name) as scope:
+        with tf.variable_scope(self.name):
 
             ''' Generate user specifying vector '''
             # ======================================================================
@@ -131,7 +132,11 @@ class AutoEncoder(object):
                 raise NotImplementedError
             # ======================================================================
 
-    def train(self, rating, penalty_weights=None):
+    def _init_optimizer(self):
+        '''
+        Initialize optimizer
+        '''
+
         if self.optimizer == 'adadelta':
             self.optim = tf.train.AdadeltaOptimizer(self.lr).minimize(self.cost)
         elif self.optimizer == 'gradient':
@@ -141,54 +146,73 @@ class AutoEncoder(object):
         else:
             raise NotImplementedError
 
+    def _run_optim(self, inputs, targets, user_id, weights=None):
+        '''
+        Run optimizer
+        '''
+        if weights is not None:
+            self.optim.run(
+                    session=self.sess,
+                    feed_dict={
+                        self.inputs: inputs,
+                        self.targets: targets,
+                        self.user_id: user_id,
+                        self.weights: weights
+                    })
+        else:
+            self.optim.run(
+                    session=self.sess,
+                    feed_dict={
+                        self.inputs: inputs,
+                        self.targets: targets,
+                        self.user_id: user_id,
+                    })
+    def _get_loss(self, inputs, targets, user_id, weights=None):
+        '''
+        Get current loss
+        '''
+        if weights is not None:
+            loss = self.cost.eval(
+                    session=self.sess,
+                    feed_dict={
+                        self.inputs: inputs,
+                        self.targets: targets,
+                        self.user_id: user_id,
+                        self.weights: weights
+                    })
+        else:
+            loss = self.cost.eval(
+                    session=self.sess,
+                    feed_dict={
+                        self.inputs: inputs,
+                        self.targets: targets,
+                        self.user_id: user_id
+                    })
+        return loss
+
+    def train(self, rating, penalty_weights=None):
+
+        self._init_optimizer()
+        
         init = tf.global_variables_initializer()
         self.sess.run(init)
 
-        if self.with_weights:
-            if penalty_weights is None:
-                raise ValueError
+        if self.with_weights and penalty_weights is None:
+            raise ValueError
 
-        if self.targets is not self.inputs:
-            if self.with_weights:  # ========================================
-                for epoch in trange(self.epochs):
-                    loss_ = 0
-                    for usr in range(self.user_num):
-                        self.optim.run(
-                                session=self.sess,
-                                feed_dict={
-                                    self.inputs: [rating[usr]],
-                                    self.targets: [rating[usr]],
-                                    self.user_id: usr,
-                                    self.weights: [penalty_weights]
-                                })
+       for epoch in trange(self.epochs):
+            loss_ = 0
+            for usr in range(self.user_num):
+                input_ = [rating[usr]]
+                target_ = [rating[usr]]
 
-                        loss_ += self.cost.eval(
-                                session=self.sess,
-                                feed_dict={
-                                    self.inputs: [rating[usr]],
-                                    self.targets: [rating[usr]],
-                                    self.user_id: usr,
-                                    self.weights: [penalty_weights]
-                                })
-                    self.log['train_loss'].append(loss_/self.user_num)
-            else:  # ========================================================
-                for epoch in trange(self.epochs):
-                    loss_ = 0
-                    for usr in range(self.user_num):
-                        self.optim.run(
-                                session=self.sess,
-                                feed_dict={
-                                    self.inputs: [rating[usr]],
-                                    self.targets: [rating[usr]],
-                                    self.user_id: usr,
-                                })
+                if not self.with_weights:
+                    self._run_optim(input_, target_, usr)
+                    loss_ += self._get_loss(input_, target_, usr)
+                else:
+                    weights_ = [penalty_weights]
+                    self._run_optim(input_, target_, usr, weights=weights_)
+                    loss_ += self._get_loss(input_, target_, usr, weights=weights_)
+            self.log['train_loss'].append(loss_/self.user_num)
 
-                        loss_ += self.cost.eval(
-                                session=self.sess,
-                                feed_dict={
-                                    self.inputs: [rating[usr]],
-                                    self.targets: [rating[usr]],
-                                    self.user_id: usr,
-                                })
-                    self.log['train_loss'].append(loss_/self.user_num)
 
