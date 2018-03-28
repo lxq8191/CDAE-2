@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tqdm import trange
 import numpy as np
-from utils import get_topN
+from utils import *
 
 
 class AutoEncoder(object):
@@ -47,7 +47,7 @@ class AutoEncoder(object):
 
         self.cost_function = cost_function
         self.optimizer = optimizer
-        self.log = {'train_loss': [], 'valid_loss': []}
+        self.log = {'train_loss': [], 'ap@5': []}
         self.name = name
 
         self._build_model()
@@ -190,7 +190,7 @@ class AutoEncoder(object):
                     })
         return loss
 
-    def train(self, rating, penalty_weights=None):
+    def train(self, rating, train_indices, test_indices, penalty_weights=None):
 
         self._init_optimizer()
         
@@ -200,8 +200,9 @@ class AutoEncoder(object):
         if self.with_weights and penalty_weights is None:
             raise ValueError
 
-       for epoch in trange(self.epochs):
+        for epoch in trange(self.epochs):
             loss_ = 0
+            ap_at_5 = []
             for usr in range(self.user_num):
                 input_ = [rating[usr]]
                 target_ = [rating[usr]]
@@ -213,6 +214,17 @@ class AutoEncoder(object):
                     weights_ = [penalty_weights]
                     self._run_optim(input_, target_, usr, weights=weights_)
                     loss_ += self._get_loss(input_, target_, usr, weights=weights_)
+
+                recon = self.recon.eval(
+                    session=self.sess,
+                    feed_dict={
+                        self.inputs: [rating[usr]],
+                        self.user_id: usr
+                    })
+
+                top5 = get_topN(recon, train_indices[usr])
+                ap_at_5.append(avg_precision(top5, test_indices[usr]))
             self.log['train_loss'].append(loss_/self.user_num)
+            self.log['ap@5'].append(sum(ap_at_5)/len(ap_at_5))
 
 
